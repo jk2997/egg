@@ -578,11 +578,21 @@ impl<L: Language + Display> RecExpr<L> {
             log::warn!("Tried to print a non-dag: {:?}", self.nodes);
         }
         eprintln!("Starting to_sexp_rec()");
-        self.to_sexp_rec(last, &mut |_| None)
+        let mut visited = std::collections::HashSet::new();
+        self.to_sexp_rec(last, &mut |_| None, &mut visited)
     }
 
-    fn to_sexp_rec(&self, i: usize, f: &mut impl FnMut(usize) -> Option<String>) -> Sexp {
+    fn to_sexp_rec(
+        &self,
+        i: usize,
+        f: &mut impl FnMut(usize) -> Option<String>,
+        visited: &mut std::collections::HashSet<usize>,
+    ) -> Sexp {
         eprintln!("Entering to_sexp_rec()");
+        if !visited.insert(i) {
+            // Already visited, cycle detected
+            return Sexp::String(format!("<<<< CYCLE to {} = {:?} >>>>", i, self.nodes[i]));
+        }
         let node = &self.nodes[i];
         eprintln!("Converting node to string");
         let op = Sexp::String(node.to_string());
@@ -600,7 +610,7 @@ impl<L: Language + Display> RecExpr<L> {
                     return Sexp::String(s);
                 } else if child < i {
                     eprintln!("Recursion in to_sexp_rec");
-                    self.to_sexp_rec(child, f)
+                    self.to_sexp_rec(child, f, visited)
                 } else {
                     Sexp::String(format!("<<<< CYCLE to {} = {:?} >>>>", i, node))
                 })
@@ -609,6 +619,44 @@ impl<L: Language + Display> RecExpr<L> {
         }
     }
 
+    /*  pub(crate) fn to_sexp(&self) -> Sexp {
+            eprintln!("Entered to_sexp()");
+            let last = self.nodes.len() - 1;
+            if !self.is_dag() {
+                log::warn!("Tried to print a non-dag: {:?}", self.nodes);
+            }
+            eprintln!("Starting to_sexp_rec()");
+            self.to_sexp_rec(last, &mut |_| None)
+        }
+
+        fn to_sexp_rec(&self, i: usize, f: &mut impl FnMut(usize) -> Option<String>) -> Sexp {
+            eprintln!("Entering to_sexp_rec()");
+            let node = &self.nodes[i];
+            eprintln!("Converting node to string");
+            let op = Sexp::String(node.to_string());
+            eprintln!("Converted node to string");
+            if node.is_leaf() {
+                eprintln!("Node is leaf");
+                op
+            } else {
+                eprintln!("Node is not leaf");
+                let mut vec = vec![op];
+                eprintln!("Entering for loop for node");
+                for child in node.children().iter().map(|i| usize::from(*i)) {
+                    eprintln!("Entered for loop for node");
+                    vec.push(if let Some(s) = f(child) {
+                        return Sexp::String(s);
+                    } else if child < i {
+                        eprintln!("Recursion in to_sexp_rec");
+                        self.to_sexp_rec(child, f)
+                    } else {
+                        Sexp::String(format!("<<<< CYCLE to {} = {:?} >>>>", i, node))
+                    })
+                }
+                Sexp::List(vec)
+            }
+        }
+    */
     /// Pretty print with a maximum line length.
     ///
     /// This gives you a nice, indented, pretty-printed s-expression.
