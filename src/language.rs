@@ -556,10 +556,14 @@ impl<'a, L> IntoIterator for &'a mut RecExpr<L> {
 
 impl<L: Language + Display> Display for RecExpr<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        eprintln!("Entered fmt for RecExpr<L>");
         if self.nodes.is_empty() {
+            eprintln!("Entered self.nodes.is_empty()");
             Display::fmt("()", f)
         } else {
+            eprintln!("Starting self.to_sexp().to_string()");
             let s = self.to_sexp().to_string();
+            eprintln!("Ended self.to_sexp().to_string()");
             Display::fmt(&s, f)
         }
     }
@@ -568,24 +572,34 @@ impl<L: Language + Display> Display for RecExpr<L> {
 impl<L: Language + Display> RecExpr<L> {
     /// Convert this RecExpr into an Sexp
     pub(crate) fn to_sexp(&self) -> Sexp {
+        eprintln!("Entered to_sexp()");
         let last = self.nodes.len() - 1;
         if !self.is_dag() {
             log::warn!("Tried to print a non-dag: {:?}", self.nodes);
         }
+        eprintln!("Starting to_sexp_rec()");
         self.to_sexp_rec(last, &mut |_| None)
     }
 
     fn to_sexp_rec(&self, i: usize, f: &mut impl FnMut(usize) -> Option<String>) -> Sexp {
+        eprintln!("Entering to_sexp_rec()");
         let node = &self.nodes[i];
+        eprintln!("Converting node to string");
         let op = Sexp::String(node.to_string());
+        eprintln!("Converted node to string");
         if node.is_leaf() {
+            eprintln!("Node is leaf");
             op
         } else {
+            eprintln!("Node is not leaf");
             let mut vec = vec![op];
+            eprintln!("Entering for loop for node");
             for child in node.children().iter().map(|i| usize::from(*i)) {
+                eprintln!("Entered for loop for node");
                 vec.push(if let Some(s) = f(child) {
                     return Sexp::String(s);
                 } else if child < i {
+                    eprintln!("Recursion in to_sexp_rec");
                     self.to_sexp_rec(child, f)
                 } else {
                     Sexp::String(format!("<<<< CYCLE to {} = {:?} >>>>", i, node))
