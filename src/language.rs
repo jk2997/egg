@@ -11,6 +11,7 @@ use std::{hash::Hash, str::FromStr};
 use crate::*;
 
 use fmt::Formatter;
+use rustc_hash::FxHashSet;
 use symbolic_expressions::{Sexp, SexpError};
 use thiserror::Error;
 
@@ -181,47 +182,94 @@ pub trait Language: Debug + Clone + Eq + Ord + Hash {
     }
 
     /// Same as [`Language::build_recexpr`], but fallible.
+    /// Same as [`Language::build_recexpr`], but fallible.
     fn try_build_recexpr<F, Err>(&self, mut get_node: F) -> Result<RecExpr<Self>, Err>
     where
         F: FnMut(Id) -> Result<Self, Err>,
     {
         let mut set = IndexSet::<Self>::default();
         let mut ids = HashMap::<Id, Id>::default();
+        let mut visiting = FxHashSet::<Id>::default(); // NEW: track nodes currently in stack
         let mut todo = self.children().to_vec();
 
         while let Some(id) = todo.last().copied() {
             if ids.contains_key(&id) {
                 todo.pop();
+                visiting.remove(&id); // NEW: no longer visiting
                 continue;
+            }
+
+            // NEW: Cycle detection
+            if visiting.contains(&id) {
+                eprintln!("Cycle detected!");
             }
 
             let node = get_node(id)?;
 
-            // check to see if we can do this node yet
             let mut ids_has_all_children = true;
             for child in node.children() {
                 if !ids.contains_key(child) {
                     ids_has_all_children = false;
-                    todo.push(*child)
+                    todo.push(*child);
+                    visiting.insert(*child); // NEW: mark as being visited
                 }
             }
 
-            // all children are processed, so we can lookup this node safely
             if ids_has_all_children {
                 let node = node.map_children(|id| ids[&id]);
                 let new_id = set.insert_full(node).0;
                 ids.insert(id, Id::from(new_id));
                 todo.pop();
+                visiting.remove(&id); // NEW: done processing
             }
         }
 
-        // finally, create the expression and add the root node
         let mut expr: RecExpr<_> = set.into_iter().collect();
         expr.add(self.clone().map_children(|id| ids[&id]));
         Ok(expr)
     }
-}
 
+    /*    fn try_build_recexpr<F, Err>(&self, mut get_node: F) -> Result<RecExpr<Self>, Err>
+        where
+            F: FnMut(Id) -> Result<Self, Err>,
+        {
+            let mut set = IndexSet::<Self>::default();
+            let mut ids = HashMap::<Id, Id>::default();
+            let mut todo = self.children().to_vec();
+
+            while let Some(id) = todo.last().copied() {
+                if ids.contains_key(&id) {
+                    todo.pop();
+                    continue;
+                }
+
+                let node = get_node(id)?;
+
+                // check to see if we can do this node yet
+                let mut ids_has_all_children = true;
+                for child in node.children() {
+                    if !ids.contains_key(child) {
+                        ids_has_all_children = false;
+                        todo.push(*child)
+                    }
+                }
+
+                // all children are processed, so we can lookup this node safely
+                if ids_has_all_children {
+                    let node = node.map_children(|id| ids[&id]);
+                    let new_id = set.insert_full(node).0;
+                    ids.insert(id, Id::from(new_id));
+                    todo.pop();
+                }
+            }
+
+            // finally, create the expression and add the root node
+            let mut expr: RecExpr<_> = set.into_iter().collect();
+            expr.add(self.clone().map_children(|id| ids[&id]));
+            Ok(expr)
+        }
+    */
+}
 /// A trait for parsing e-nodes. This is implemented automatically by
 /// [`define_language!`].
 ///
